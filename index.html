@@ -1,1 +1,91 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#17120f"><meta name="description" content="SRPG 戰役"><title>旌旗戰棋</title><link rel="stylesheet" href="./styles.css"></head><body><main><header><div><small>SRPG 戰役</small><h1>旌旗戰棋</h1></div><button id="sound" aria-pressed="true">♫ 音效</button></header><section id="lobby" class="panel hero"><div class="sigil">✦</div><p>一局 5–10 分鐘。系統會把戰績保存到你的場域 KV。</p><p>最佳紀錄 <strong id="best">0</strong></p><button id="start" class="primary">開始新局</button><a href="./ATTRIBUTION.md">製作與署名</a></section><section id="game" hidden><div id="hud" class="hud"></div><section id="board" class="board" aria-label="遊戲盤面"></section><p id="msg" class="msg" aria-live="polite"></p><div id="actions" class="actions"></div></section></main><script type="module" src="./app.js"></script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#1b1410" />
+    <meta name="description" content="三章戰役的回合制戰棋：地形、兵種相剋、陣亡不復生。" />
+    <title>旌旗戰棋</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <small>戰棋戰役</small>
+          <h1>旌旗戰棋</h1>
+        </div>
+        <button id="sound" class="ghost" aria-pressed="true">♫ 音效</button>
+      </header>
+
+      <section id="lobby" class="panel">
+        <p class="lead">三章戰役。地形擋路、兵種相剋、<strong>陣亡的弟兄不會回來</strong>。</p>
+        <ul class="rules">
+          <li>槍剋騎、騎剋弓、弓剋槍——相剋傷害 ×1.5</li>
+          <li>竹林土丘有防禦加成；溪水石垣不可通行</li>
+          <li>弓兵射程 2，近戰打不到就不會被反擊</li>
+        </ul>
+        <p class="record">最佳戰功 <strong id="best">0</strong></p>
+        <div class="lobby-actions">
+          <button id="start" class="primary">開始戰役</button>
+          <button id="resume" class="ghost" hidden>續戰第 <span id="resume-chapter">1</span> 章</button>
+        </div>
+        <a class="credits-link" href="./ATTRIBUTION.md">製作與署名</a>
+      </section>
+
+      <section id="game" hidden>
+        <div class="hud">
+          <div class="hud-main">
+            <strong id="chapter-title">第一章</strong>
+            <span id="objective" class="objective"></span>
+          </div>
+          <div class="hud-side">
+            <span id="turn-badge" class="badge">回合 1</span>
+            <span id="phase-badge" class="badge phase-ally">我方</span>
+          </div>
+        </div>
+
+        <div class="board-wrap">
+          <canvas id="board" aria-label="戰場棋盤"></canvas>
+        </div>
+
+        <p id="msg" class="msg" aria-live="polite">點選我方單位開始行動</p>
+
+        <div id="inspect" class="inspect" hidden>
+          <div class="inspect-head">
+            <span id="inspect-name"></span>
+            <span id="inspect-type" class="tag"></span>
+          </div>
+          <div class="bars">
+            <div class="bar"><i id="inspect-hp-fill"></i></div>
+            <span id="inspect-hp" class="nums"></span>
+          </div>
+          <div id="inspect-stats" class="stats"></div>
+          <div id="forecast" class="forecast" hidden></div>
+        </div>
+
+        <div id="actions" class="actions"></div>
+
+        <div class="controls">
+          <button id="end-turn" class="primary">結束我方回合</button>
+          <button id="give-up" class="ghost">放棄戰役</button>
+        </div>
+
+        <details class="log-box">
+          <summary>戰報</summary>
+          <ul id="log"></ul>
+        </details>
+      </section>
+
+      <div id="overlay" class="overlay" hidden>
+        <div class="overlay-card">
+          <h2 id="overlay-title"></h2>
+          <p id="overlay-body"></p>
+          <ul id="overlay-roster" class="roster"></ul>
+          <div id="overlay-actions" class="overlay-actions"></div>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
