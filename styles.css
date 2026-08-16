@@ -77,6 +77,12 @@ button.ghost {
   background: transparent;
 }
 
+button.danger {
+  border-color: #7d3832;
+  background: #3a211e;
+  color: #ffaaa0;
+}
+
 button:active:not(:disabled) {
   transform: translateY(1px);
 }
@@ -166,6 +172,7 @@ button:active:not(:disabled) {
 }
 
 .board-wrap {
+  position: relative;
   display: flex;
   justify-content: center;
   background: #0f0c0a;
@@ -175,10 +182,87 @@ button:active:not(:disabled) {
   overflow: hidden;
 }
 
+.board-wrap.impact {
+  animation: impact-shake 180ms ease-out;
+}
+
 canvas {
   display: block;
   image-rendering: pixelated;
   touch-action: manipulation;
+}
+
+.fx-layer {
+  position: absolute;
+  inset: 6px;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.strike-fx {
+  position: absolute;
+  left: var(--from-x);
+  top: var(--from-y);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff4b8;
+  box-shadow: 0 0 12px #ffb14a;
+  transform: translate(-50%, -50%);
+  animation: strike-flight 260ms ease-in forwards;
+}
+
+.strike-fx.aimed {
+  width: 5px;
+  height: 5px;
+  background: #d7f4ff;
+  box-shadow: 0 0 10px #7fd0ff;
+}
+
+.strike-fx.enemy {
+  background: #ff8a7a;
+  box-shadow: 0 0 12px #ff4f46;
+}
+
+.damage-fx {
+  position: absolute;
+  color: #fff4b8;
+  font-size: clamp(15px, 4vw, 24px);
+  text-shadow: 0 2px 2px #000, 0 0 8px #c42e25;
+  transform: translate(-50%, -50%);
+  animation: damage-rise 620ms ease-out forwards;
+}
+
+.levelup-fx {
+  position: absolute;
+  color: var(--gold);
+  font-size: clamp(14px, 3.6vw, 20px);
+  font-weight: 700;
+  text-shadow: 0 2px 0 #000;
+  transform: translate(-50%, -50%);
+  animation: damage-rise 900ms ease-out forwards;
+  pointer-events: none;
+}
+
+.tutorial {
+  display: grid;
+  gap: 2px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid #886925;
+  border-left: 4px solid var(--gold);
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(242, 193, 78, 0.12), var(--panel));
+}
+
+.tutorial b {
+  color: var(--gold);
+  font-size: 14px;
+}
+
+.tutorial span {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .msg {
@@ -274,6 +358,24 @@ canvas {
   min-width: 120px;
 }
 
+.actions button.skill {
+  border-color: #735aa2;
+  background: linear-gradient(180deg, #4c3b69, #342947);
+  color: #efe4ff;
+}
+
+.charge-ready {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #8c6420;
+  border-radius: 10px;
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .controls {
   display: flex;
   gap: 8px;
@@ -317,6 +419,36 @@ canvas {
   display: none !important;
 }
 
+@keyframes strike-flight {
+  to {
+    left: var(--to-x);
+    top: var(--to-y);
+    transform: translate(-50%, -50%) scale(1.8);
+    opacity: 0.2;
+  }
+}
+
+@keyframes damage-rise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -20%) scale(0.7);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -70%) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -160%) scale(1);
+  }
+}
+
+@keyframes impact-shake {
+  25% { transform: translateX(-3px); }
+  55% { transform: translateX(3px); }
+  80% { transform: translateX(-1px); }
+}
+
 .overlay-card {
   width: min(420px, 100%);
   background: var(--panel);
@@ -328,6 +460,10 @@ canvas {
 .overlay-card h2 {
   margin: 0 0 6px;
   color: var(--gold);
+}
+
+.confirm-card h2 {
+  color: var(--foe);
 }
 
 .roster {
@@ -353,6 +489,31 @@ canvas {
   gap: 8px;
 }
 
+.reward-title {
+  margin: 4px 0 0;
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+button.reward {
+  display: grid;
+  justify-items: start;
+  min-height: 58px;
+  padding: 8px 12px;
+  border-color: #6b5430;
+  background: linear-gradient(180deg, #34291d, #271f18);
+}
+
+button.reward b {
+  color: var(--gold);
+}
+
+button.reward span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 @media (min-width: 520px) {
   main {
     padding: 20px;
@@ -365,10 +526,26 @@ canvas {
   .lobby-actions,
   .overlay-actions {
     flex-direction: row;
+    flex-wrap: wrap;
   }
 
   .lobby-actions button,
   .overlay-actions button {
     flex: 1;
+  }
+
+  .overlay-actions .reward-title {
+    flex-basis: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
   }
 }

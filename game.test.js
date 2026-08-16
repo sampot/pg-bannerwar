@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   CHAPTERS,
   UNIT_TYPES,
+  applyReward,
+  aimedShot,
   attack,
+  brace,
   canMoveTo,
   checkObjective,
   createGame,
@@ -17,6 +20,8 @@ import {
   stepEnemy,
   summarize,
   terrainAt,
+  threatRange,
+  tutorialHint,
   typeMultiplier,
   unitAt,
   wait,
@@ -213,6 +218,83 @@ describe("戰鬥", () => {
   });
 });
 
+describe("兵種能力", () => {
+  it("槍兵架槍後只受一半傷害，受擊後解除", () => {
+    const s = createGame({ chapter: 0 });
+    const defender = ally(s, 0);
+    const attacker = foe(s, 0);
+    defender.x = 3;
+    defender.y = 3;
+    attacker.x = 3;
+    attacker.y = 2;
+    attacker.type = "spear";
+    s.phase = "ally";
+
+    const guarded = brace(s, defender.id);
+    expect(guarded.units.find((u) => u.id === defender.id).guarding).toBe(true);
+    expect(guarded.units.find((u) => u.id === defender.id).acted).toBe(true);
+
+    guarded.phase = "foe";
+    const normalDamage = forecast(s, attacker, defender).damage;
+    const result = attack(guarded, attacker.id, defender.id);
+    const after = result.units.find((u) => u.id === defender.id);
+    expect(defender.hp - after.hp).toBe(Math.ceil(normalDamage / 2));
+    expect(after.guarding).toBe(false);
+  });
+
+  it("只有槍兵能架槍", () => {
+    const s = createGame({ chapter: 0 });
+    const archer = ally(s, 1);
+    expect(archer.type).toBe("bow");
+    expect(brace(s, archer.id)).toBe(s);
+  });
+
+  it("弓兵瞄準射擊可打三格、無反擊，並進入三回合冷卻", () => {
+    const s = createGame({ chapter: 0 });
+    const archer = ally(s, 1);
+    const target = foe(s, 0);
+    archer.x = 3;
+    archer.y = 4;
+    target.x = 3;
+    target.y = 1;
+    target.type = "bow";
+    target.hp = target.maxHp;
+
+    expect(attack(s, archer.id, target.id)).toBe(s);
+    const after = aimedShot(s, archer.id, target.id);
+    expect(after.units.find((u) => u.id === target.id).hp).toBeLessThan(target.hp);
+    expect(after.units.find((u) => u.id === archer.id).hp).toBe(archer.hp);
+    expect(after.units.find((u) => u.id === archer.id).skillCd).toBe(3);
+  });
+
+  it("瞄準射擊冷卻中不能使用，回到我方階段才遞減", () => {
+    const s = createGame({ chapter: 0 });
+    const archer = ally(s, 1);
+    archer.skillCd = 2;
+    expect(aimedShot(s, archer.id, foe(s, 0).id)).toBe(s);
+    const foePhase = endPhase(s);
+    expect(foePhase.units.find((u) => u.id === archer.id).skillCd).toBe(2);
+    const allyPhase = endPhase(foePhase);
+    expect(allyPhase.units.find((u) => u.id === archer.id).skillCd).toBe(1);
+  });
+
+  it("騎兵移動至少兩格會發動衝鋒增傷", () => {
+    const s = createGame({ chapter: 0 });
+    const rider = ally(s, 2);
+    const target = foe(s, 0);
+    rider.type = "cavalry";
+    target.type = "spear";
+    rider.x = 3;
+    rider.y = 2;
+    target.x = 3;
+    target.y = 1;
+    const plain = forecast(s, rider, target).damage;
+    rider.movedDistance = 3;
+    const charged = forecast(s, rider, target).damage;
+    expect(charged).toBeGreaterThan(plain);
+  });
+});
+
 describe("回合流程", () => {
   it("我方階段不能操作敵軍", () => {
     const s = createGame({ chapter: 0 });
@@ -316,13 +398,34 @@ describe("跨章名冊", () => {
     survivor.lvl = 3;
     survivor.exp = 40;
     const roster = rosterFrom(s);
-    expect(roster.filter((r) => r.alive).length).toBe(2);
+    expect(roster.filter((r) => r.alive).length).toBe(CHAPTERS[0].allies.length - 1);
     const next = createGame({ chapter: 1, roster });
     const names = next.units.filter((u) => u.side === "ally").map((u) => u.name);
     expect(names).not.toContain(dead.name);
     const carried = next.units.find((u) => u.name === survivor.name);
     expect(carried.lvl).toBe(3);
     expect(carried.atk).toBeGreaterThan(next.units.find((u) => u.side === "foe" && u.type === carried.type)?.atk ?? 0);
+  });
+
+  it("章間可選軍備、磨刀或操練，效果會帶入下一章", () => {
+    const s = createGame({ chapter: 0 });
+    const roster = rosterFrom(s);
+    const armored = createGame({ chapter: 1, roster: applyReward(roster, "armor") });
+    expect(ally(armored, 0).maxHp).toBe(ally(s, 0).maxHp + 4);
+
+    const sharpened = createGame({ chapter: 1, roster: applyReward(roster, "edge") });
+    expect(ally(sharpened, 0).atk).toBe(ally(s, 0).atk + 1);
+
+    roster[0].exp = 80;
+    const drilled = applyReward(roster, "training");
+    expect(drilled[0].lvl).toBe(2);
+    expect(drilled[0].exp).toBe(15);
+  });
+
+  it("未知章間獎勵不改變名冊", () => {
+    const roster = rosterFrom(createGame());
+    expect(applyReward(roster, "unknown")).toEqual(roster);
+    expect(applyReward(roster, "unknown")).not.toBe(roster);
   });
 });
 
@@ -382,6 +485,35 @@ describe("敵方 AI", () => {
     expect(after.units.find((u) => u.id === victim.id).hp).toBeLessThan(victim.hp);
     expect(pendingUnits(after, "foe").some((u) => u.id === f.id)).toBe(false);
   });
+
+  it("威脅範圍包含移動後可攻擊格，且不含不可站立地形", () => {
+    const s = createGame({ chapter: 1 });
+    const enemy = foe(s, 0);
+    const cells = threatRange(s, enemy);
+    expect(cells.length).toBeGreaterThan(UNIT_TYPES[enemy.type].range);
+    expect(cells.some((c) => terrainAt(s, c.x, c.y) === "water")).toBe(true);
+    expect(new Set(cells.map((c) => `${c.x},${c.y}`)).size).toBe(cells.length);
+  });
+});
+
+describe("新手引導", () => {
+  it("第一章依操作狀態逐步提示選人、移動、攻擊、結束回合", () => {
+    const s = createGame({ chapter: 0 });
+    expect(tutorialHint(s, null, "idle").step).toBe("select");
+    const unit = ally(s, 0);
+    expect(tutorialHint(s, unit.id, "idle").step).toBe("move");
+    unit.moved = true;
+    expect(tutorialHint(s, unit.id, "moved").step).toBe("act");
+    unit.acted = true;
+    for (const u of s.units.filter((u) => u.side === "ally")) u.acted = true;
+    expect(tutorialHint(s, null, "idle").step).toBe("end");
+  });
+
+  it("第二回合起不再顯示強制教學", () => {
+    const s = createGame({ chapter: 0 });
+    s.turn = 2;
+    expect(tutorialHint(s, null, "idle")).toBe(null);
+  });
 });
 
 describe("摘要", () => {
@@ -408,5 +540,29 @@ describe("查詢工具", () => {
     const s = createGame({ chapter: 0 });
     expect(terrainAt(s, -1, 0)).toBe(null);
     expect(terrainAt(s, 0, 99)).toBe(null);
+  });
+});
+
+describe("戰役可通關", () => {
+  it("第一章開局騎兵能衝到賊弓身邊", () => {
+    const s = createGame({ chapter: 0 });
+    const rider = ally(s, 2);
+    const archerFoe = s.units.find((u) => u.side === "foe" && u.type === "bow");
+    expect(canMoveTo(s, rider, archerFoe.x, archerFoe.y + 1) || canMoveTo(s, rider, archerFoe.x, archerFoe.y - 1) || canMoveTo(s, rider, archerFoe.x - 1, archerFoe.y) || canMoveTo(s, rider, archerFoe.x + 1, archerFoe.y)).toBe(true);
+  });
+
+  it("第二章奪旗：我軍站上帥旗即勝", () => {
+    const s = createGame({ chapter: 1 });
+    const unit = ally(s, 0);
+    unit.x = s.objective.x;
+    unit.y = s.objective.y;
+    expect(checkObjective(s).outcome).toBe("won");
+  });
+
+  it("第三章斬將：主將陣亡即勝", () => {
+    const s = createGame({ chapter: 2 });
+    const boss = s.units.find((u) => u.side === "foe" && u.type === "commander");
+    boss.hp = 0;
+    expect(checkObjective(s).outcome).toBe("won");
   });
 });

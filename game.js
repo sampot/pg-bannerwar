@@ -12,9 +12,9 @@ export const TERRAIN = {
 };
 
 export const UNIT_TYPES = {
-  spear: { name: "槍兵", move: 3, range: 1, maxHp: 26, atk: 9, beats: "cavalry" },
-  bow: { name: "弓兵", move: 3, range: 2, maxHp: 20, atk: 8, beats: "spear" },
-  cavalry: { name: "騎兵", move: 5, range: 1, maxHp: 24, atk: 10, beats: "bow" },
+  spear: { name: "槍兵", move: 3, range: 1, maxHp: 26, atk: 9, beats: "cavalry", skill: "架槍" },
+  bow: { name: "弓兵", move: 3, range: 2, maxHp: 20, atk: 8, beats: "spear", skill: "瞄準射擊" },
+  cavalry: { name: "騎兵", move: 5, range: 1, maxHp: 24, atk: 10, beats: "bow", skill: "衝鋒" },
   commander: { name: "主將", move: 4, range: 1, maxHp: 32, atk: 11, beats: null },
 };
 
@@ -46,6 +46,7 @@ export const CHAPTERS = [
       { type: "spear", x: 2, y: 7 },
       { type: "bow", x: 4, y: 7 },
       { type: "cavalry", x: 3, y: 6 },
+      { type: "spear", x: 5, y: 6 },
     ],
     foes: [
       { type: "spear", x: 2, y: 0, name: "賊眾" },
@@ -105,7 +106,6 @@ export const CHAPTERS = [
     foes: [
       { type: "commander", x: 3, y: 1, name: "敵將" },
       { type: "bow", x: 1, y: 2, name: "城弓" },
-      { type: "bow", x: 6, y: 2, name: "城弓" },
       { type: "spear", x: 2, y: 3, name: "城兵" },
       { type: "spear", x: 5, y: 3, name: "城兵" },
       { type: "cavalry", x: 4, y: 4, name: "出擊騎" },
@@ -135,8 +135,12 @@ export function unitAt(state, x, y) {
 function makeUnit(spec, side, index, carried) {
   const base = UNIT_TYPES[spec.type];
   const lvl = carried?.lvl ?? 1;
-  const bonusHp = (lvl - 1) * 3;
-  const bonusAtk = lvl - 1;
+  const rewardHp = carried?.bonusHp ?? 0;
+  const rewardAtk = carried?.bonusAtk ?? 0;
+  const bonusHp = (lvl - 1) * 3 + rewardHp;
+  const bonusAtk = lvl - 1 + rewardAtk;
+  const foeHpPenalty = side === "foe" && spec.type !== "commander" ? 4 : 0;
+  const foeAtkPenalty = side === "foe" ? (spec.type === "commander" ? 1 : 2) : 0;
   return {
     id: `${side}-${index}`,
     side,
@@ -146,11 +150,16 @@ function makeUnit(spec, side, index, carried) {
     y: spec.y,
     lvl,
     exp: carried?.exp ?? 0,
-    maxHp: base.maxHp + bonusHp,
-    hp: base.maxHp + bonusHp,
-    atk: base.atk + bonusAtk,
+    maxHp: base.maxHp + bonusHp - foeHpPenalty,
+    hp: base.maxHp + bonusHp - foeHpPenalty,
+    atk: base.atk + bonusAtk - foeAtkPenalty,
+    bonusHp: rewardHp,
+    bonusAtk: rewardAtk,
     moved: false,
     acted: false,
+    movedDistance: 0,
+    guarding: false,
+    skillCd: 0,
   };
 }
 
@@ -236,6 +245,21 @@ export function targetsFrom(state, unit, x = unit.x, y = unit.y) {
   return state.units.filter((u) => u.hp > 0 && u.side !== unit.side && distance({ x, y }, u) <= range);
 }
 
+/** 該單位本回合移動後可能攻擊到的所有格子，用於敵方威脅預覽。 */
+export function threatRange(state, unit) {
+  const origins = [{ x: unit.x, y: unit.y }, ...movementRange(state, unit)];
+  const range = UNIT_TYPES[unit.type].range;
+  const cells = new Map();
+  for (const origin of origins) {
+    for (let y = 0; y < state.h; y += 1) {
+      for (let x = 0; x < state.w; x += 1) {
+        if (distance(origin, { x, y }) <= range) cells.set(`${x},${y}`, { x, y });
+      }
+    }
+  }
+  return [...cells.values()];
+}
+
 export function typeMultiplier(attacker, defender) {
   if (UNIT_TYPES[attacker.type].beats === defender.type) return ADVANTAGE;
   if (UNIT_TYPES[defender.type].beats === attacker.type) return DISADVANTAGE;
@@ -245,14 +269,19 @@ export function typeMultiplier(attacker, defender) {
 export function forecast(state, attacker, defender, from = { x: attacker.x, y: attacker.y }) {
   const def = TERRAIN[terrainAt(state, defender.x, defender.y)].def;
   const mult = typeMultiplier(attacker, defender);
-  const damage = Math.max(1, Math.round(attacker.atk * mult * (1 - def / 100)));
+  const chargeDistance = attacker.type === "cavalry"
+    ? Math.max(attacker.movedDistance ?? 0, distance(attacker, from))
+    : 0;
+  const charge = chargeDistance >= 2 ? Math.min(1.5, 1 + chargeDistance * 0.1) : 1;
+  const guard = defender.guarding ? 0.5 : 1;
+  const damage = Math.max(1, Math.ceil(attacker.atk * mult * charge * (1 - def / 100) * guard));
   const survives = defender.hp - damage > 0;
   const canCounter = survives && distance(from, defender) <= UNIT_TYPES[defender.type].range;
   const counterDef = TERRAIN[terrainAt(state, from.x, from.y)].def;
   const counter = canCounter
     ? Math.max(1, Math.round(defender.atk * typeMultiplier(defender, attacker) * (1 - counterDef / 100) * 0.8))
     : 0;
-  return { damage, counter, mult, kills: !survives };
+  return { damage, counter, mult, charge, guarded: defender.guarding, kills: !survives };
 }
 
 function grantExp(unit, amount) {
@@ -274,6 +303,7 @@ export function moveUnit(state, unitId, x, y) {
   const unit = s.units.find((u) => u.id === unitId);
   if (!unit || unit.hp <= 0 || unit.moved || unit.side !== s.phase) return state;
   if (!canMoveTo(s, unit, x, y)) return state;
+  unit.movedDistance = distance(unit, { x, y });
   unit.x = x;
   unit.y = y;
   unit.moved = true;
@@ -291,7 +321,8 @@ export function attack(state, attackerId, defenderId) {
 
   const f = forecast(s, attacker, defender);
   defender.hp -= f.damage;
-  s.log.unshift(`${attacker.name} 對 ${defender.name} 造成 ${f.damage}${f.mult > 1 ? "（相剋）" : f.mult < 1 ? "（被剋）" : ""}`);
+  defender.guarding = false;
+  s.log.unshift(`${attacker.name} 對 ${defender.name} 造成 ${f.damage}${f.charge > 1 ? "（衝鋒）" : f.guarded ? "（架槍減傷）" : f.mult > 1 ? "（相剋）" : f.mult < 1 ? "（被剋）" : ""}`);
   if (defender.hp <= 0) {
     defender.hp = 0;
     s.log.unshift(`${defender.name} 陣亡`);
@@ -308,6 +339,45 @@ export function attack(state, attackerId, defenderId) {
   }
   attacker.moved = true;
   attacker.acted = true;
+  return checkObjective(s);
+}
+
+/** 槍兵犧牲本回合行動架槍，下一次受擊傷害減半。 */
+export function brace(state, unitId) {
+  const s = clone(state);
+  const unit = s.units.find((u) => u.id === unitId);
+  if (!unit || unit.type !== "spear" || unit.hp <= 0 || unit.acted || unit.side !== s.phase) return state;
+  unit.moved = true;
+  unit.acted = true;
+  unit.guarding = true;
+  s.log.unshift(`${unit.name} 架槍固守`);
+  return s;
+}
+
+/** 弓兵三格瞄準射擊：威力 90%、不受反擊、冷卻三個自己的回合。 */
+export function aimedShot(state, attackerId, defenderId) {
+  const s = clone(state);
+  const attacker = s.units.find((u) => u.id === attackerId);
+  const defender = s.units.find((u) => u.id === defenderId);
+  if (!attacker || !defender || attacker.type !== "bow" || attacker.skillCd > 0) return state;
+  if (attacker.hp <= 0 || defender.hp <= 0 || attacker.acted || attacker.side !== s.phase || attacker.side === defender.side) return state;
+  if (distance(attacker, defender) > 3) return state;
+  const terrainDef = TERRAIN[terrainAt(s, defender.x, defender.y)].def;
+  const guard = defender.guarding ? 0.5 : 1;
+  const damage = Math.max(1, Math.ceil(attacker.atk * typeMultiplier(attacker, defender) * 0.9 * (1 - terrainDef / 100) * guard));
+  defender.hp = Math.max(0, defender.hp - damage);
+  defender.guarding = false;
+  attacker.moved = true;
+  attacker.acted = true;
+  attacker.skillCd = 3;
+  s.log.unshift(`${attacker.name} 瞄準射擊 ${defender.name}，造成 ${damage}`);
+  if (defender.hp === 0) {
+    s.log.unshift(`${defender.name} 陣亡`);
+    grantExp(attacker, EXP_PER_KILL);
+    if (attacker.side === "ally") s.score += 40;
+  } else {
+    grantExp(attacker, EXP_PER_HIT);
+  }
   return checkObjective(s);
 }
 
@@ -336,6 +406,11 @@ export function endPhase(state) {
     s.phase = "ally";
     s.turn += 1;
   }
+  for (const u of s.units.filter((unit) => unit.side === s.phase)) {
+    u.guarding = false;
+    u.movedDistance = 0;
+    if (u.skillCd > 0) u.skillCd -= 1;
+  }
   return checkObjective(s);
 }
 
@@ -362,7 +437,31 @@ export function checkObjective(state) {
 export function rosterFrom(state) {
   return state.units
     .filter((u) => u.side === "ally")
-    .map((u) => ({ type: u.type, name: u.name, lvl: u.lvl, exp: u.exp, alive: u.hp > 0 }));
+    .map((u) => ({
+      type: u.type,
+      name: u.name,
+      lvl: u.lvl,
+      exp: u.exp,
+      alive: u.hp > 0,
+      bonusHp: u.bonusHp ?? 0,
+      bonusAtk: u.bonusAtk ?? 0,
+    }));
+}
+
+export function applyReward(roster, reward) {
+  const next = structuredClone(roster);
+  for (const unit of next.filter((u) => u.alive !== false)) {
+    if (reward === "armor") unit.bonusHp = (unit.bonusHp ?? 0) + 4;
+    if (reward === "edge") unit.bonusAtk = (unit.bonusAtk ?? 0) + 1;
+    if (reward === "training") {
+      unit.exp += 35;
+      while (unit.exp >= EXP_PER_LEVEL) {
+        unit.exp -= EXP_PER_LEVEL;
+        unit.lvl += 1;
+      }
+    }
+  }
+  return next;
 }
 
 /**
@@ -373,21 +472,25 @@ export function planEnemyMove(state, unitId) {
   const unit = state.units.find((u) => u.id === unitId);
   if (!unit || unit.hp <= 0) return null;
   const cells = [{ x: unit.x, y: unit.y, cost: 0 }, ...movementRange(state, unit)];
-  const allies = state.units.filter((u) => u.side === "ally" && u.hp > 0);
-  if (!allies.length) return { move: null, target: null };
+  const opponents = state.units.filter((u) => u.side !== unit.side && u.hp > 0);
+  if (!opponents.length) return { move: null, target: null };
   let best = null;
   for (const cell of cells) {
     const terrain = TERRAIN[terrainAt(state, cell.x, cell.y)];
-    const nearest = Math.min(...allies.map((a) => distance(cell, a)));
+    const nearest = Math.min(...opponents.map((a) => distance(cell, a)));
     const targets = targetsFrom(state, unit, cell.x, cell.y);
     if (targets.length) {
       for (const target of targets) {
         const f = forecast(state, unit, target, cell);
-        const score = f.damage * 2 + (f.kills ? 90 : 0) - f.counter * 1.6 + terrain.def * 0.3 - nearest;
+        const objectiveBonus = unit.side === "ally" && state.objective.kind === "commander" && target.type === "commander" ? 70 : 0;
+        const score = f.damage * 2 + (f.kills ? 90 : 0) - f.counter * 1.6 + terrain.def * 0.3 - nearest + objectiveBonus;
         if (!best || score > best.score) best = { score, move: cell, target };
       }
     } else {
-      const score = terrain.def * 0.2 - nearest * 3;
+      const objectiveDistance = unit.side === "ally" && state.objective.kind === "seize"
+        ? distance(cell, state.objective)
+        : nearest;
+      const score = terrain.def * 0.2 - objectiveDistance * 3;
       if (!best || score > best.score) best = { score, move: cell, target: null };
     }
   }
@@ -404,6 +507,27 @@ export function stepEnemy(state, unitId) {
   }
   if (plan.target) s = attack(s, unitId, plan.target.id);
   return wait(s, unitId);
+}
+
+/** 第一章第一回合的情境式引導；UI 只需呈現回傳文字。 */
+export function tutorialHint(state, selectedId, mode) {
+  if (state.chapter !== 0 || state.turn !== 1 || state.phase !== "ally" || state.outcome !== "playing") return null;
+  if (!selectedId) {
+    if (!pendingUnits(state, "ally").length) {
+      return { step: "end", title: "交棒給敵軍", text: "所有人都行動完了。按「結束我方回合」觀察敵人的走法。" };
+    }
+    return { step: "select", title: "先選一名同伴", text: "點藍色單位。槍、弓、騎各有不同射程與能力。" };
+  }
+  const unit = state.units.find((u) => u.id === selectedId);
+  if (!unit || unit.acted) return { step: "select", title: "換下一名同伴", text: "灰色單位已行動；選另一名藍色單位。" };
+  if (!unit.moved && mode === "idle") {
+    return { step: "move", title: "選擇落腳處", text: "亮藍格都能走。竹林和土丘較慢，但能降低受到的傷害。" };
+  }
+  return {
+    step: "act",
+    title: unit.type === "spear" ? "攻擊，或架槍固守" : unit.type === "bow" ? "攻擊，或使用瞄準射擊" : "騎兵移動越遠，衝鋒越痛",
+    text: "紅格是可攻擊目標；也可以待命保留位置。",
+  };
 }
 
 export function summarize(state) {

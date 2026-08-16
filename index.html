@@ -23,7 +23,8 @@
         <ul class="rules">
           <li>槍剋騎、騎剋弓、弓剋槍——相剋傷害 ×1.5</li>
           <li>竹林土丘有防禦加成；溪水石垣不可通行</li>
-          <li>弓兵射程 2，近戰打不到就不會被反擊</li>
+          <li>槍兵架槍、弓兵瞄準射擊、騎兵衝鋒——各有戰術</li>
+          <li>點敵軍可看威脅範圍；章間選一次整軍補給</li>
         </ul>
         <p class="record">最佳戰功 <strong id="best">0</strong></p>
         <div class="lobby-actions">
@@ -47,7 +48,13 @@
 
         <div class="board-wrap">
           <canvas id="board" aria-label="戰場棋盤"></canvas>
+          <div id="fx-layer" class="fx-layer" aria-hidden="true"></div>
         </div>
+
+        <aside id="tutorial" class="tutorial" hidden>
+          <b id="tutorial-title"></b>
+          <span id="tutorial-text"></span>
+        </aside>
 
         <p id="msg" class="msg" aria-live="polite">點選我方單位開始行動</p>
 
@@ -83,6 +90,17 @@
           <p id="overlay-body"></p>
           <ul id="overlay-roster" class="roster"></ul>
           <div id="overlay-actions" class="overlay-actions"></div>
+        </div>
+      </div>
+
+      <div id="confirm-overlay" class="overlay" hidden>
+        <div class="overlay-card confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+          <h2 id="confirm-title">放棄這次戰役？</h2>
+          <p id="confirm-body">目前章節的盤面與跨章名冊會被清除。最佳戰功仍會保留。</p>
+          <div class="overlay-actions">
+            <button id="cancel-give-up" class="primary">繼續作戰</button>
+            <button id="confirm-give-up" class="danger">確定放棄</button>
+          </div>
         </div>
       </div>
     </main>
