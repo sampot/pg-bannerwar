@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "rev": "0ff64fe",
+  "files": [
+    "app.js",
+    "assets/audio/click.ogg",
+    "assets/audio/error.ogg",
+    "assets/audio/hit.ogg",
+    "assets/audio/music.ogg",
+    "assets/audio/ok.ogg",
+    "assets/audio/soft.ogg",
+    "assets/audio/win.ogg",
+    "assets/images/tiles.png",
+    "assets/licenses/hydrogene-16bit-rpg.txt",
+    "assets/licenses/kenney-1bit.txt",
+    "assets/licenses/kenney-impact-sounds.txt",
+    "assets/licenses/kenney-music-jingles.txt",
+    "assets/licenses/kenney-rpg-audio.txt",
+    "assets/licenses/kenney-ui-audio.txt",
+    "audio.js",
+    "campaign.js",
+    "functions.js",
+    "game.js",
+    "index.html",
+    "persist.js",
+    "styles.css"
+  ]
+}
